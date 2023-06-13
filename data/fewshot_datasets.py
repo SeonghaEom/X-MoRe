@@ -44,23 +44,22 @@ class BaseJsonDataset(Dataset):
         label = self.label_list[idx]
         if self.transform:
             image = self.transform(image)
-        
-        return image, torch.tensor(label).long()
+        return image, torch.tensor(label).long(), image_path
 
 fewshot_datasets = ['DTD', 'Flower102', 'Food101', 'Cars', 'SUN397', 
                     'Aircraft', 'Pets', 'Caltech101', 'UCF101', 'eurosat']
 
 path_dict = {
     # dataset_name: ["image_dir", "json_split_file"]
-    "flower102": ["jpg", "data/data_splits/split_zhou_OxfordFlowers.json"],
-    "food101": ["images", "data/data_splits/split_zhou_Food101.json"],
-    "dtd": ["images", "data/data_splits/split_zhou_DescribableTextures.json"],
-    "pets": ["", "data/data_splits/split_zhou_OxfordPets.json"],
-    "sun397": ["", "data/data_splits/split_zhou_SUN397.json"],
-    "caltech101": ["", "data/data_splits/split_zhou_Caltech101.json"],
-    "ucf101": ["", "data/data_splits/split_zhou_UCF101.json"],
-    "cars": ["", "data/data_splits/split_zhou_StanfordCars.json"],
-    "eurosat": ["", "data/data_splits/split_zhou_EuroSAT.json"]
+    "flower102": ["jpg", "/data/seongha/oxford_flowers/split_zhou_OxfordFlowers.json"],
+    "food101": ["images", "/data/seongha/food-101/split_zhou_Food101.json"],
+    "dtd": ["images", "/data/seongha/dtd/split_zhou_DescribableTextures.json"],
+    "pets": ["images", "/data/seongha/oxford_pets/split_zhou_OxfordPets.json"],
+    "sun397": ["SUN397", "/data/seongha/sun397/split_zhou_SUN397.json"],
+    "caltech101": ["101_ObjectCategories", "/data/seongha/caltech-101/split_zhou_Caltech101.json"],
+    "ucf101": ["UCF-101-midframes", "/data/seongha/ucf101/split_zhou_UCF101.json"],
+    "cars": ["", "/data/seongha/stanford_cars/split_zhou_StanfordCars.json"],
+    "eurosat": ["2750", "/data/seongha/eurosat/split_zhou_EuroSAT.json"]
 }
 
 def build_fewshot_dataset(set_id, root, transform, mode='train', n_shot=None):
@@ -113,5 +112,5 @@ class Aircraft(Dataset):
         if self.transform:
             image = self.transform(image)
         
-        return image, torch.tensor(label).long()
+        return image, torch.tensor(label).long(), image_path
 

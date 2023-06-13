@@ -11,7 +11,10 @@ from .simple_tokenizer import SimpleTokenizer as _Tokenizer
 from data.imagnet_prompts import imagenet_classes
 from data.fewshot_datasets import fewshot_datasets
 from data.cls_to_names import *
-
+from sentence_transformers.util import (semantic_search, 
+                                        dot_score, cos_sim,
+                                        normalize_embeddings)
+from statistics import mean
 _tokenizer = _Tokenizer()
 
 DOWNLOAD_ROOT='~/.cache/clip'
@@ -44,7 +47,23 @@ class TextEncoder(nn.Module):
         self.ln_final = clip_model.ln_final
         self.text_projection = clip_model.text_projection
         self.dtype = clip_model.dtype
+        self.token_embedding = clip_model.token_embedding
+        
+    def encode_text(self, text):
+        x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
 
+        x = x + self.positional_embedding.type(self.dtype)
+        x = x.permute(1, 0, 2)  # NLD -> LND
+        x = self.transformer(x)
+        x = x.permute(1, 0, 2)  # LND -> NLD
+        x = self.ln_final(x).type(self.dtype)
+
+        # x.shape = [batch_size, n_ctx, transformer.width]
+        # take features from the eot embedding (eot_token is the highest number in each sequence)
+        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
+
+        return x
+    
     def forward(self, prompts, tokenized_prompts):
         x = prompts + self.positional_embedding.type(self.dtype)
         x = x.permute(1, 0, 2)  # NLD -> LND
@@ -145,6 +164,7 @@ class PromptLearner(nn.Module):
         self.classnames = classnames
 
     def reset(self):
+        # print("reset ", self.ctx_init_state.device)
         ctx_vectors = self.ctx_init_state
         self.ctx.copy_(ctx_vectors) # to be optimized
         if self.learned_cls:
@@ -285,6 +305,7 @@ class ClipTestTimeTuning(nn.Module):
         # prompt tuning
         self.prompt_learner = PromptLearner(clip, classnames, batch_size, n_ctx, ctx_init, ctx_position, learned_cls)
         self.criterion = criterion
+        self.ctx_init = ctx_init
         
     @property
     def dtype(self):
@@ -296,6 +317,45 @@ class ClipTestTimeTuning(nn.Module):
 
     def reset_classnames(self, classnames, arch):
         self.prompt_learner.reset_classnames(classnames, arch)
+        
+    def nn_project(self, image, print_hits=False, topk=1):
+        #https://github.com/YuxinWenRick/hard-prompts-made-easy/blob/362cb41bbc609337ab2ace1745f1e02b8d45ead6/optim_utils.py#L26
+        with torch.no_grad():
+            # print(curr_embeds.shape)
+            curr_embeds = self.image_encoder(image.type(self.dtype))
+            bsz, emb_dim = curr_embeds.shape
+            
+            # Using the sentence transformers semantic search which is 
+            # a dot product exact kNN search between a set of 
+            # query vectors and a corpus of vector
+            embedding_matrix = self.text_encoder.token_embedding.weight
+            embedding_matrix = normalize_embeddings(embedding_matrix)
+            # print(curr_embeds, topk)
+            hits = semantic_search(curr_embeds.type(self.dtype), embedding_matrix.type(self.dtype), 
+                                    query_chunk_size=curr_embeds.shape[0], 
+                                    top_k=topk,
+                                    score_function=cos_sim)
+            
+            # cos_scores = cos_sim(curr_embeds.type(torch.float32), embedding_matrix.type(torch.float32))[0]
+            # top_results = torch.topk(cos_scores, k=topk)
+            
+            # print(cos_scores.sort(), top_results)
+            # print(torch.sum(curr_embeds, dim=1) == 0, torch.sum(embedding_matrix, dim=1) == 0,torch.isnan(embedding_matrix).any())
+            if print_hits:
+                all_hits = []
+                for hit in hits:
+                    all_hits.append(hit[0]["score"])
+                print(f"mean hits:{mean(all_hits)}")
+                print(hits)
+            
+            nn_indices = torch.tensor([[hit[i]["corpus_id"] for i in range(topk)] for hit in hits], device=curr_embeds.device)
+            nn_indices = nn_indices.reshape((topk, -1))
+
+            projected_embeds = self.text_encoder.token_embedding(nn_indices)
+            projected_embeds = projected_embeds @ self.text_encoder.text_projection
+            projected_embeds = projected_embeds.reshape(topk, -1)
+
+        return projected_embeds, nn_indices
 
     def get_text_features(self):
         text_features = []
@@ -304,10 +364,34 @@ class ClipTestTimeTuning(nn.Module):
         t_features = self.text_encoder(prompts, tokenized_prompts)
         text_features.append(t_features / t_features.norm(dim=-1, keepdim=True))
         text_features = torch.stack(text_features, dim=0)
-
+        del prompts
+        del tokenized_prompts
+        del t_features
+        # print(torch.mean(text_features, dim=0))
         return torch.mean(text_features, dim=0)
 
-    def inference(self, image):
+    def inference(self, image, caption=None):
+        with torch.no_grad():
+            image_features = self.image_encoder(image.type(self.dtype))
+            if caption:
+                tokens = torch.cat([tokenize(txt, truncate=True) for txt in caption]).to(self.prompt_learner.device)
+                # print(tokens.shape, tokens.device)
+                cap_features = self.text_encoder.encode_text(tokens)
+                cap_features = cap_features / cap_features.norm(dim=-1, keepdim=True)
+
+        text_features = self.get_text_features()
+        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+        
+        logit_scale = self.logit_scale.exp()
+        logits = logit_scale * image_features @ text_features.t()
+        if caption:
+            logits2 = logit_scale * cap_features @ text_features.t()
+        else: logits2 = None
+        text_features = None
+        return logits, logits2
+
+    def forward(self, image):
+        # input is [caption]
         with torch.no_grad():
             image_features = self.image_encoder(image.type(self.dtype))
 
@@ -316,17 +400,40 @@ class ClipTestTimeTuning(nn.Module):
         
         logit_scale = self.logit_scale.exp()
         logits = logit_scale * image_features @ text_features.t()
+        
+        return logits, text_features
+    
+    def forward_caption(self, input):
+        # input is [caption]
+        with torch.no_grad():
+            if self.ctx_init:
+                tokens = torch.cat([tokenize(self.ctx_init + " " + txt, truncate=True) for txt in input]).to(self.prompt_learner.device)
+            else:
+                tokens = torch.cat([tokenize(txt, truncate=True) for txt in input]).to(self.prompt_learner.device)
+            # print(tokens.shape, tokens.device)
+            features = self.text_encoder.encode_text(tokens)
+            # print(features.shape)
 
-        return logits
+        features = features / features.norm(dim=-1, keepdim=True)
+        logit_scale = self.logit_scale.exp()
+        return logit_scale * features
+    
+    def caption_ensemble(self, input):
+        # input is [caption]
+        with torch.no_grad():
+            if self.ctx_init:
+                tokens = torch.cat([tokenize(self.ctx_init + " " + txt, truncate=True) for txt in input]).to(self.prompt_learner.device)
+            else:
+                tokens = torch.cat([tokenize(txt, truncate=True) for txt in input]).to(self.prompt_learner.device)
+            # print(tokens.shape, tokens.device)
+            features = self.text_encoder.encode_text(tokens)
+            # print(features.shape)
 
-    def forward(self, input):
-        if isinstance(input, Tuple):
-            view_0, view_1, view_2 = input
-            return self.contrast_prompt_tuning(view_0, view_1, view_2)
-        elif len(input.size()) == 2:
-            return self.directional_prompt_tuning(input)
-        else:
-            return self.inference(input)
+        features = features / features.norm(dim=-1, keepdim=True)
+        text_features = self.get_text_features()
+        logit_scale = self.logit_scale.exp()
+        return logit_scale * features @ text_features.t()
+            
 
 
 def get_coop(clip_arch, test_set, device, n_ctx, ctx_init, learned_cls=False):
@@ -341,7 +448,9 @@ def get_coop(clip_arch, test_set, device, n_ctx, ctx_init, learned_cls=False):
         classnames = imagenet_classes
 
     model = ClipTestTimeTuning(device, classnames, None, arch=clip_arch,
-                            n_ctx=n_ctx, ctx_init=ctx_init, learned_cls=learned_cls)
+                            n_ctx=n_ctx, ctx_init=ctx_init, learned_cls=learned_cls).to(device)
+    
+    
 
     return model
 

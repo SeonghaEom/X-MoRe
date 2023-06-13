@@ -17,20 +17,37 @@ except ImportError:
 from data.fewshot_datasets import *
 import data.augmix_ops as augmentations
 
+# ID_to_DIRNAME={
+#     'I': 'ImageNet',
+#     'A': 'imagenet-a',
+#     'K': 'ImageNet-Sketch',
+#     'R': 'imagenet-r',
+#     'V': 'imagenetv2-matched-frequency-format-val',
+#     'flower102': 'Flower102',
+#     'dtd': 'DTD',
+#     'pets': 'OxfordPets',
+#     'cars': 'StanfordCars',
+#     'ucf101': 'UCF101',
+#     'caltech101': 'Caltech101',
+#     'food101': 'Food101',
+#     'sun397': 'SUN397',
+#     'aircraft': 'fgvc_aircraft',
+#     'eurosat': 'eurosat'
+# }
 ID_to_DIRNAME={
-    'I': 'ImageNet',
-    'A': 'imagenet-a',
-    'K': 'ImageNet-Sketch',
-    'R': 'imagenet-r',
-    'V': 'imagenetv2-matched-frequency-format-val',
-    'flower102': 'Flower102',
-    'dtd': 'DTD',
-    'pets': 'OxfordPets',
-    'cars': 'StanfordCars',
-    'ucf101': 'UCF101',
-    'caltech101': 'Caltech101',
-    'food101': 'Food101',
-    'sun397': 'SUN397',
+    'I': 'imagenet',
+    'A': 'imagenet-adversarial',
+    'K': 'imagenet-sketch',
+    'R': 'imagenet-rendition',
+    'V': 'imagenetv2',
+    'flower102': 'oxford_flowers',
+    'dtd': 'dtd',
+    'pets': 'oxford_pets',
+    'cars': 'stanford_cars',
+    'ucf101': 'ucf101',
+    'caltech101': 'caltech-101',
+    'food101': 'food-101',
+    'sun397': 'sun397',
     'aircraft': 'fgvc_aircraft',
     'eurosat': 'eurosat'
 }
@@ -38,10 +55,13 @@ ID_to_DIRNAME={
 def build_dataset(set_id, transform, data_root, mode='test', n_shot=None, split="all", bongard_anno=False):
     if set_id == 'I':
         # ImageNet validation set
-        testdir = os.path.join(os.path.join(data_root, ID_to_DIRNAME[set_id]), 'val')
+        testdir = os.path.join(os.path.join(data_root, ID_to_DIRNAME[set_id]),'images', 'val')
         testset = datasets.ImageFolder(testdir, transform=transform)
+    elif set_id == 'A':
+        testdir = os.path.join(data_root, ID_to_DIRNAME[set_id], 'imagenet-a')
+        testset = datasets.ImageFolder(testdir, transform=transform)  
     elif set_id in ['A', 'K', 'R', 'V']:
-        testdir = os.path.join(data_root, ID_to_DIRNAME[set_id])
+        testdir = os.path.join(data_root, ID_to_DIRNAME[set_id], 'images')
         testset = datasets.ImageFolder(testdir, transform=transform)
     elif set_id in fewshot_datasets:
         if mode == 'train' and n_shot:
