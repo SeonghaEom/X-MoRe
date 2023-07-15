@@ -288,8 +288,8 @@ def test_time_adapt_eval(val_loader, model, cap_cache, model_state, optimizer, o
             save_result['caption_conf_mean'].append(torch.mean(cap_mean_stat).item())
             save_result['cap_cnt'].append(cnt_cap)
             save_result['cap_corr'].append(cnt_cap_correct)
-            save_result['Div'].append(JeffDiv)
-            save_result['Ent'].append(Entloss)
+            save_result['Div'].append(JeffDiv.item())
+            save_result['Ent'].append(Entloss.item())
 
             # df = pd.DataFrame(save_result)
             # df = df.reset_index()
@@ -374,7 +374,7 @@ def main_worker(gpu, args):
             cap_cache = create_cache(os.path.join(args.cap_cache, '{}.pkl'.format(set_id)))
             save_cache = False
         print("save cache ", save_cache)
-        for retrieve_K in [128, 64, 32, 16, 8, 4, 2]:
+        for retrieve_K in [128, 64, 32, 16, 8,4, 2]:
             args.retrieve_K = retrieve_K
             print("retrieve K: {}".format(retrieve_K))
             Dict = defaultdict(list)
