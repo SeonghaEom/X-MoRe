@@ -162,7 +162,7 @@ def test_time_tuning(model, cap_cache, inputs, optimizer, scaler, imagepath , me
             # retrieved_Caption, retrieved_score = return_caption(imagepath, retrieve_K=args.retrieve_K)
             retrieved_Caption = cap_cache.__getitem__(index, imagepath, args.retrieve_K)
             if retrieved_Caption == None:
-                return None, None
+                return None, None, None, None
             # print(retrieved_Caption)
             output_caption = model.caption_ensemble(retrieved_Caption)
             
@@ -170,14 +170,14 @@ def test_time_tuning(model, cap_cache, inputs, optimizer, scaler, imagepath , me
             conf_img = avg_entropy(output_img)
             # print("before ", avg_entropy(output_caption))
             ##### selection#####
-            if args.retrieve_K >= 32:
-                top = 0.1
-                batch_entropy = -(output_caption.softmax(1) * output_caption.log_softmax(1)).sum(1)
-                idx = torch.argsort(batch_entropy, descending=False)[:int(batch_entropy.size()[0] * top)]
-                ##redefine retrieved_Caption, output_caption with selected idx
-                retrieved_Caption = [retrieved_Caption[i] for i in idx]
-                # print(retrieved_Caption[0])
-                output_caption = output_caption[idx]
+            # if args.retrieve_K >= 32:
+            #     top = 0.1
+            #     batch_entropy = -(output_caption.softmax(1) * output_caption.log_softmax(1)).sum(1)
+            #     idx = torch.argsort(batch_entropy, descending=False)[:int(batch_entropy.size()[0] * top)]
+            #     ##redefine retrieved_Caption, output_caption with selected idx
+            #     retrieved_Caption = [retrieved_Caption[i] for i in idx]
+            #     # print(retrieved_Caption[0])
+            #     output_caption = output_caption[idx]
             conf_cap = avg_entropy(output_caption)
             # print("after ", conf_cap)
             
@@ -256,10 +256,10 @@ def test_time_adapt_eval(val_loader, model, cap_cache, model_state, optimizer, o
         # print("at eval entropy ", conf_img, conf_cap)
         thres_img = torch.mean(mean_stat).item()
         thres_cap = torch.mean(cap_mean_stat).item()
-        gap = thres_img - thres_cap
+        penalty = thres_cap - thres_img
 
         # if conf_img > thres_img  and conf_cap < thres_cap and i > 200:
-        if conf_img + gap > conf_cap and i > 200:
+        if conf_img > conf_cap + penalty and i > 200:
             correct_ = accuracy(caption_logit, target, topk=(1, 2, 3, 4, 5), caption=None, logger=None).item()
             cnt_cap += 1
             if correct_ : cnt_cap_correct +=1
@@ -367,6 +367,7 @@ def main_worker(gpu, args):
     for set_id in datasets:
         print("evaluating: {}".format(set_id))
         if not os.path.exists(os.path.join(args.cap_cache, '{}.pkl'.format(set_id))):
+            
             cap_cache = create_cache()
             save_cache = True
         else:
@@ -374,7 +375,12 @@ def main_worker(gpu, args):
             cap_cache = create_cache(os.path.join(args.cap_cache, '{}.pkl'.format(set_id)))
             save_cache = False
         print("save cache ", save_cache)
-        for retrieve_K in [128, 64, 32, 16, 8,4, 2]:
+        for retrieve_K in [64, 32, 16, 8,4, 2]:
+            path = './notebook/threshold_with_entropy/{}/{}/{}'.format(args.arch, args.seed, retrieve_K)
+            os.makedirs(path, exist_ok=True)
+            path = os.path.join(path, 'threshold_with_entropy_{}.csv'.format(set_id))
+            if os.path.exists(path):
+                continue
             args.retrieve_K = retrieve_K
             print("retrieve K: {}".format(retrieve_K))
             Dict = defaultdict(list)
@@ -385,7 +391,28 @@ def main_worker(gpu, args):
                 normalize,
             ])
             batchsize = 1
-            classnames = eval("{}_classes".format(set_id.lower()))
+            if args.test_sets in fewshot_datasets:
+                classnames = eval("{}_classes".format(args.test_sets.lower()))
+            else:
+                classnames = imagenet_classes
+            # Reset classnames of custom CLIP model
+            if len(set_id) > 1: 
+                # fine-grained classification datasets
+                classnames = eval("{}_classes".format(set_id.lower()))
+            else:
+                assert set_id in ['A', 'R', 'K', 'V', 'I']
+                classnames_all = imagenet_classes
+                classnames = []
+                if set_id in ['A', 'R', 'V']:
+                    label_mask = eval("imagenet_{}_mask".format(set_id.lower()))
+                    if set_id == 'R':
+                        for i, m in enumerate(label_mask):
+                            if m:
+                                classnames.append(classnames_all[i])
+                    else:
+                        classnames = [classnames_all[i] for i in label_mask]
+                else:
+                    classnames = classnames_all
             model.reset_classnames(classnames, args.arch)
             with torch.no_grad():
                 model.reset()
@@ -409,8 +436,8 @@ def main_worker(gpu, args):
             df = pd.DataFrame(results)
             df = df.reset_index()
 
-            path = './notebook/threshold_with_entropy/{}/{}'.format(args.arch, retrieve_K)
-            os.makedirs(path, exist_ok=True)
+            path = './notebook/threshold_with_entropy/{}/{}/{}'.format(args.arch, args.seed, retrieve_K)
+            
             df.to_csv(os.path.join(path, 'threshold_with_entropy_{}.csv'.format(set_id)))
 
         
