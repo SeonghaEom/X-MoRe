@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
+from torchvision.datasets import ImageFolder
 
 from data.hoi_dataset import BongardDataset
 try:
@@ -51,18 +52,49 @@ ID_to_DIRNAME={
     'aircraft': 'fgvc_aircraft',
     'eurosat': 'eurosat'
 }
+from typing import Any, Callable, cast, Dict, List, Optional, Tuple, Union
+class customImageFolder(ImageFolder):
+    # def __init__(
+    #     self,
+    #     root: str,
+    #     loader: Callable[[str], Any],
+    #     extensions: Optional[Tuple[str, ...]] = None,
+    #     transform: Optional[Callable] = None,
+    #     target_transform: Optional[Callable] = None,
+    #     is_valid_file: Optional[Callable[[str], bool]] = None, ):
+    #     super().__init__(root, transform=transform, target_transform=target_transform)
+    #     classes, class_to_idx = self.find_classes(self.root)
+    #     samples = self.make_dataset(self.root, class_to_idx, extensions, is_valid_file)
+
+    #     self.loader = loader
+    #     self.extensions = extensions
+
+    #     self.classes = classes
+    #     self.class_to_idx = class_to_idx
+    #     self.samples = samples
+        # self.targets = [s[1] for s in samples]
+    def __getitem__(self, index):        
+        image, target = super(ImageFolder, self).__getitem__(index)
+        return index, image,target, self.imgs[index][0]
 
 def build_dataset(set_id, transform, data_root, mode='test', n_shot=None, split="all", bongard_anno=False):
     if set_id == 'I':
         # ImageNet validation set
         testdir = os.path.join(os.path.join(data_root, ID_to_DIRNAME[set_id]),'images', 'val')
-        testset = datasets.ImageFolder(testdir, transform=transform)
+        # testset = datasets.ImageFolder(testdir, transform=transform)
+        testset = customImageFolder(testdir, transform=transform)
     elif set_id == 'A':
         testdir = os.path.join(data_root, ID_to_DIRNAME[set_id], 'imagenet-a')
-        testset = datasets.ImageFolder(testdir, transform=transform)  
-    elif set_id in ['A', 'K', 'R', 'V']:
+        # testset = datasets.ImageFolder(testdir, transform=transform)  
+        testset = customImageFolder(testdir, transform=transform)
+    elif set_id == 'R':
+        testdir = os.path.join(data_root, ID_to_DIRNAME[set_id], 'imagenet-r')
+        # testset = datasets.ImageFolder(testdir, transform=transform)  
+        testset = customImageFolder(testdir, transform=transform)
+    elif set_id in ['K', 'V']:
         testdir = os.path.join(data_root, ID_to_DIRNAME[set_id], 'images')
-        testset = datasets.ImageFolder(testdir, transform=transform)
+        # testset = datasets.ImageFolder(testdir, transform=transform)
+        testset = customImageFolder(testdir, transform=transform)
     elif set_id in fewshot_datasets:
         if mode == 'train' and n_shot:
             testset = build_fewshot_dataset(set_id, os.path.join(data_root, ID_to_DIRNAME[set_id.lower()]), transform, mode=mode, n_shot=n_shot)

@@ -44,7 +44,7 @@ class BaseJsonDataset(Dataset):
         label = self.label_list[idx]
         if self.transform:
             image = self.transform(image)
-        return image, torch.tensor(label).long(), image_path
+        return idx, image, torch.tensor(label).long(), image_path
 
 fewshot_datasets = ['DTD', 'Flower102', 'Food101', 'Cars', 'SUN397', 
                     'Aircraft', 'Pets', 'Caltech101', 'UCF101', 'eurosat']
@@ -112,5 +112,5 @@ class Aircraft(Dataset):
         if self.transform:
             image = self.transform(image)
         
-        return image, torch.tensor(label).long(), image_path
+        return idx, image, torch.tensor(label).long(), image_path
 
