@@ -372,7 +372,7 @@ def main_worker(gpu, args):
             cap_cache = create_cache(os.path.join(args.cap_cache, '{}.pkl'.format(set_id)))
             save_cache = False
         print("save cache ", save_cache)
-        for retrieve_K in [32]:
+        for retrieve_K in [64, 32, 16, 8, 4, 2]:
             path = './notebook/ensemble_with_entropy/{}/{}/{}'.format(args.arch, args.seed, retrieve_K)
             os.makedirs(path, exist_ok=True)
             path = os.path.join(path, 'ensemble_with_entropy_{}.csv'.format(set_id))
