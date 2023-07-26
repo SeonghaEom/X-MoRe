@@ -179,6 +179,7 @@ def test_time_adapt_eval(val_loader, model, cap_cache, optimizer=None, optim_sta
             with torch.no_grad():
                 output_img = model.inference(image.cuda(args.gpu, non_blocking=True), label_features)
                 caption_logit = model.caption_ensemble(retrieved_Caption, label_features)
+                if i==0: print("Norm ", torch.norm(output_img), torch.norm(caption_logit[0]))
             # caption_logit = caption_logit[0]
             alpha = logit_coefficient(output_img)
             beta = logit_coefficient(caption_logit)
@@ -289,10 +290,11 @@ def main_worker(gpu, args):
 
         # retrieve_K = 8
         path = './notebook/ensemble_with_entropy/{}/{}/{}'.format(args.arch, args.seed, args.retrieve_K)
+        if args.load: path = './notebook/ensemble_with_entropy_pretrained/{}/{}/{}'.format(args.arch, args.seed, args.retrieve_K)
         os.makedirs(path, exist_ok=True)
         path = os.path.join(path, 'ensemble_with_entropy_{}.csv'.format(set_id))
-        # if os.path.exists(path):
-        #     continue
+        if os.path.exists(path):
+            continue
 
         print("retrieve K: {}".format(args.retrieve_K))
         Dict = defaultdict(list)
@@ -355,6 +357,8 @@ def main_worker(gpu, args):
         df = df.reset_index()
 
         path = './notebook/ensemble_with_entropy/{}/{}/{}'.format(args.arch, args.seed, args.retrieve_K)
+        if args.load: path = './notebook/ensemble_with_entropy_pretrained/{}/{}/{}'.format(args.arch, args.seed, args.retrieve_K)
+        os.makedirs(path, exist_ok=True)
         df.to_csv(os.path.join(path, 'ensemble_with_entropy_{}.csv'.format(set_id)))
 
         
