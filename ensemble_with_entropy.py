@@ -350,7 +350,7 @@ def main_worker(gpu, args):
             path = './notebook/ablation/{}/{}/{}'.format(args.arch, args.seed, args.retrieve_K)
             filename = '{}.csv'.format(args.cap_cache_file.split('.')[0])
         else:## main exp
-            path = './notebook/ensemble_with_entropy/largeN/{}/{}/{}'.format(args.arch, args.seed, args.retrieve_K)
+            path = './notebook/ensemble_with_entropy/{}/{}/{}'.format(args.arch, args.seed, args.retrieve_K)
             if args.load: path = './notebook/ensemble_with_entropy_pretrained/{}/{}/{}'.format(args.arch, args.seed, args.retrieve_K)
             filename = 'ensemble_with_entropy_{}.csv'.format(set_id)
         
