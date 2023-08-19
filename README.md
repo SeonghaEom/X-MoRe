@@ -18,7 +18,7 @@ The code is tested on PyTorch 1.13.1.
 We suggest downloading all datasets to a root directory (`${data_root}`), and renaming the directory of each dataset as suggested in `${ID_to_DIRNAME}` in `./data/datautils.py`. This would allow you to evaluate multiple datasets within the same run.     
 If this is not feasible, you could evaluate different datasets separately, and change the `${data_root}` accordingly in the bash script.
 
-For out-of-distribution generalization, we consider 5 datasets:
+For domain generalization, we consider 5 datasets:
 
 * [ImageNet](https://image-net.org/index.php) 
 * [ImageNet-A](https://github.com/hendrycks/natural-adv-examples)
@@ -26,7 +26,7 @@ For out-of-distribution generalization, we consider 5 datasets:
 * [ImageNet-V2](https://s3-us-west-2.amazonaws.com/imagenetv2public/imagenetv2-matched-frequency.tar.gz)
 * [ImageNet-Sketch](https://github.com/HaohanWang/ImageNet-Sketch)
 
-For cross-datasets generalization, we consider 10 datasets:
+For fine-grained image classification, we consider 10 datasets:
 * [Flower102](https://www.robots.ox.ac.uk/~vgg/data/flowers/102/102flowers.tgz)
 * [DTD](https://www.robots.ox.ac.uk/~vgg/data/dtd/download/dtd-r1.0.1.tar.gz)
 * [OxfordPets](https://www.robots.ox.ac.uk/~vgg/data/pets/data/images.tar.gz)
