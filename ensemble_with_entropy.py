@@ -43,28 +43,6 @@ from collections import defaultdict, OrderedDict
 import pickle
 from multiprocessing import Manager
 
-client = ClipClient(
-    url="http://127.0.0.1:1234/knn-service",
-    indice_name='laion_400m',
-    modality=Modality.IMAGE,
-    num_images=20,
-    deduplicate=False,
-)
-client_backup = ClipClient(
-    url="http://127.0.0.1:1234/knn-service",
-    indice_name='laion_400m',
-    modality=Modality.IMAGE,
-    num_images=200,
-    deduplicate=False,
-)
-
-client_backup2 = ClipClient(
-    url="http://127.0.0.1:1234/knn-service",
-    indice_name='laion_400m',
-    modality=Modality.IMAGE,
-    num_images=2000,
-    deduplicate=False,
-)
 ## Class to names mapping
 fewshot_datasets = ['DTD', 'Flower102', 'Food101', 'Cars', 'SUN397', 
                     'Aircraft', 'Pets', 'Caltech101', 'UCF101', 'eurosat']
@@ -77,22 +55,22 @@ class CaptionCache(Dataset):
         self.length = length
     def __getitem__(self, index, imagepath, K = None):
         if index not in self.shared_dict.keys():
-            
-            print('Adding {} to shared_dict'.format(index))
-            res = client_backup.query(image=imagepath)
-            if len(res) < self.length:
-                res = client_backup2.query(image=imagepath)
-            if isinstance(res, list) and len(res) >= self.length:
-                self.shared_dict[index] = [each['caption'] for each in res[:self.length]]
-            else:
-                self.shared_dict[index] = None
+            ## this must have been done previously
+            # print('Adding {} to shared_dict'.format(index))
+            # res = client_backup.query(image=imagepath)
+            # if len(res) < self.length:
+            #     res = client_backup2.query(image=imagepath)
+            # if isinstance(res, list) and len(res) >= self.length:
+            #     self.shared_dict[index] = [each['caption'] for each in res[:self.length]]
+            # else:
+            #     self.shared_dict[index] = None
+            # NotImplementedError("This part must have been done previously")
+            return None
         else:
             # print("use cache")
             # print(index)
             pass
-        if self.shared_dict[index]: return self.shared_dict[index][:K]
-        else:
-            return None
+            if self.shared_dict[index]: return self.shared_dict[index][:K]
 
     def __len__(self):
         return self.length
@@ -171,29 +149,35 @@ def test_time_adapt_eval(val_loader, model, cap_cache, optimizer=None, optim_sta
             images = torch.cat(images, dim=0)
         else: image = images.cuda(args.gpu, non_blocking=True)
         target = target.cuda(args.gpu, non_blocking=True)
-        retrieved_Caption = cap_cache.__getitem__(c_idx.item(), imagepath[0], args.retrieve_K)
+        # retrieved_Caption = cap_cache.__getitem__(c_idx.item(), imagepath[0], args.retrieve_K)
+        retrieved_Caption = None
         if retrieved_Caption == None:
             cnt_empty +=1 
             continue
         else:
             with torch.no_grad():
                 output_img = model.inference(image.cuda(args.gpu, non_blocking=True), label_features)
-                caption_logit = model.caption_ensemble(retrieved_Caption, label_features)
-                if i==0: print("Norm ", torch.norm(output_img), torch.norm(caption_logit[0]))
-            # caption_logit = caption_logit[0]
-            alpha = logit_coefficient(output_img)
-            beta = logit_coefficient(caption_logit)
-            mean_stat = torch.cat([mean_stat, torch.tensor([alpha],dtype=torch.float32).cuda(args.gpu)])
-            cap_mean_stat = torch.cat([cap_mean_stat, torch.tensor([beta], dtype=torch.float32).cuda(args.gpu)])
+                if not args.img_only: caption_logit = model.caption_ensemble(retrieved_Caption, label_features)
+                # if i==0: print("Norm ", torch.norm(output_img), torch.norm(caption_logit[0]))
+           
+            if not args.img_only:
+                alpha = logit_coefficient(output_img)
+                beta = logit_coefficient(caption_logit)
+                mean_stat = torch.cat([mean_stat, torch.tensor([alpha],dtype=torch.float32).cuda(args.gpu)])
+                cap_mean_stat = torch.cat([cap_mean_stat, torch.tensor([beta], dtype=torch.float32).cuda(args.gpu)])
 
-            assert mean_stat.requires_grad == False and cap_mean_stat.requires_grad == False
-            img_normalized = normalize(mean_stat, p=1.0, dim = 0)[-1]
-            cap_normalized = normalize(cap_mean_stat, p=1.0, dim = 0)[-1]
-            
-            ## normalize logit
-            img_logit_norm = torch.nn.functional.softmax(output_img, dim=-1)
-            cap_logit_norm = torch.nn.functional.softmax(caption_logit, dim=-1)
-            correct_ = accuracy(img_normalized * img_logit_norm + cap_normalized * cap_logit_norm , target).item()
+                assert mean_stat.requires_grad == False and cap_mean_stat.requires_grad == False
+                img_normalized = normalize(mean_stat, p=1.0, dim = 0)[-1]
+                cap_normalized = normalize(cap_mean_stat, p=1.0, dim = 0)[-1]
+                
+                # ## normalize logit
+                img_logit_norm = torch.nn.functional.softmax(output_img, dim=-1)
+                cap_logit_norm = torch.nn.functional.softmax(caption_logit, dim=-1)
+                
+                correct_ = accuracy(img_normalized * img_logit_norm + cap_normalized * cap_logit_norm , target).item() 
+            else:
+               correct_ = accuracy(output_img, target).item() 
+            # correct_ = accuracy(0.5 * img_logit_norm + 0.5 * cap_logit_norm , target).item() #ablation3
 
         correct_images += correct_
         total_images +=1
@@ -279,12 +263,15 @@ def main_worker(gpu, args):
     results = {}
     for set_id in datasets:
         print("evaluating: {}".format(set_id))
-        if not os.path.exists(os.path.join(args.cap_cache, '{}.pkl'.format(set_id))):
+        if not os.path.exists(os.path.join(args.cap_cache_dir, '{}.pkl'.format(set_id))):
             cap_cache = create_cache()
             save_cache = True
         else:
             # cap_cache = torch.load(os.path.join('./cap_cache', '{}.pt'.format(set_id)))
-            cap_cache = create_cache(os.path.join(args.cap_cache, '{}.pkl'.format(set_id)))
+            if args.cap_cache_file: ## caches for ablation goes here
+                cap_cache = create_cache(os.path.join(args.cap_cache_dir, args.cap_cache_file))
+            else:
+                cap_cache = create_cache(os.path.join(args.cap_cache_dir, '{}.pkl'.format(set_id)))
             save_cache = False
         print("save cache ", save_cache)
 
@@ -293,8 +280,8 @@ def main_worker(gpu, args):
         if args.load: path = './notebook/ensemble_with_entropy_pretrained/{}/{}/{}'.format(args.arch, args.seed, args.retrieve_K)
         os.makedirs(path, exist_ok=True)
         path = os.path.join(path, 'ensemble_with_entropy_{}.csv'.format(set_id))
-        if os.path.exists(path):
-            continue
+        # if os.path.exists(path):
+        #     continue
 
         print("retrieve K: {}".format(args.retrieve_K))
         Dict = defaultdict(list)
@@ -332,7 +319,9 @@ def main_worker(gpu, args):
         model.reset_classnames(classnames, args.arch)
         label_features = model.get_text_features() ## keep label text features
         print("label feature shape ", label_features.shape)
-        # trainable_param = model.prompt_learner.parameters()
+        trainable_param = model.prompt_learner.parameters()
+        total_params = sum(p.numel() for p in trainable_param)
+        print("total params ", total_params)
         # optimizer = torch.optim.AdamW(trainable_param, args.lr)
         # optim_state = deepcopy(optimizer.state_dict())
         # optimizer.load_state_dict(optim_state)
@@ -347,7 +336,7 @@ def main_worker(gpu, args):
                     num_workers=args.workers, pin_memory=True)
         results = test_time_adapt_eval(val_loader, model, cap_cache, optimizer=None, optim_state=None, scaler=None, save_result=Dict, set_id=set_id, args=args, label_features = label_features)
         if save_cache :
-            path = args.cap_cache
+            path = args.cap_cache_dir
             os.makedirs(path, exist_ok=True)
             shared_dict = dict(OrderedDict(sorted(cap_cache.shared_dict.items()))) # sort from key
             with open(os.path.join(path, '{}.pkl'.format(set_id)), "wb") as f:
@@ -356,10 +345,23 @@ def main_worker(gpu, args):
         df = pd.DataFrame(results)
         df = df.reset_index()
 
-        path = './notebook/ensemble_with_entropy/{}/{}/{}'.format(args.arch, args.seed, args.retrieve_K)
-        if args.load: path = './notebook/ensemble_with_entropy_pretrained/{}/{}/{}'.format(args.arch, args.seed, args.retrieve_K)
+        ## ablation
+        if args.cap_cache_file :
+            path = './notebook/ablation/{}/{}/{}'.format(args.arch, args.seed, args.retrieve_K)
+            filename = '{}.csv'.format(args.cap_cache_file.split('.')[0])
+        else:## main exp
+            path = './notebook/ensemble_with_entropy/largeN/{}/{}/{}'.format(args.arch, args.seed, args.retrieve_K)
+            if args.load: path = './notebook/ensemble_with_entropy_pretrained/{}/{}/{}'.format(args.arch, args.seed, args.retrieve_K)
+            filename = 'ensemble_with_entropy_{}.csv'.format(set_id)
+        
+        #main
         os.makedirs(path, exist_ok=True)
-        df.to_csv(os.path.join(path, 'ensemble_with_entropy_{}.csv'.format(set_id)))
+        df.to_csv(os.path.join(path, filename))
+        #ablation3
+        # path = './notebook/ablation/{}/{}/{}'.format(args.arch, args.seed, args.retrieve_K)
+        # if args.load : path = './notebook/ablation/pretrained/{}/{}/{}'.format(args.arch, args.seed, args.retrieve_K)
+        # os.makedirs(path, exist_ok=True)
+        # df.to_csv(os.path.join(path, filename))
 
         
 if __name__ == '__main__':
@@ -378,16 +380,14 @@ if __name__ == '__main__':
                         metavar='N', help='print frequency (default: 10)')
     parser.add_argument('--gpu', default=3, type=int,
                         help='GPU id to use.')
-    parser.add_argument('--tpt', action='store_true', default=False, help='run test-time prompt tuning')
-    parser.add_argument('--JeffDiv', action='store_true', default=False, help='jeffreydivergence')
-    parser.add_argument('--selection_p', default=0.1, type=float, help='confidence selection percentile')
-    parser.add_argument('--tta_steps', default=1, type=int, help='test-time-adapt steps')
     parser.add_argument('--n_ctx', default=4, type=int, help='number of tunable tokens')
-    parser.add_argument('--ctx_init', default=None, type=str, help='init tunable prompts')
+    parser.add_argument('--ctx_init', default='a_photo_of_a', type=str, help='init tunable prompts')
     parser.add_argument('--cocoop', action='store_true', default=False, help="use cocoop's output as prompt initialization")
     parser.add_argument('--load', default=None, type=str, help='path to a pre-trained coop/cocoop')
     parser.add_argument('--seed', type=int, default=0)
-    parser.add_argument('--cap_cache', type=str, default='./cap_cache')
-    parser.add_argument('--retrieve_K', type=int, default=32)
+    parser.add_argument('--cap_cache_dir', type=str, default='./cap_cache')
+    parser.add_argument('--retrieve_K', type=int, default=16)
+    parser.add_argument('--cap_cache_file', type=str, default=None)
+    parser.add_argument('--img_only', action='store_true', default=False, help="baseline")
 
     main()

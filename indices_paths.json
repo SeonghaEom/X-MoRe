@@ -1,0 +1,14 @@
+{
+
+    "laion_400m": {
+            "indice_folder": "/data/seongha/laion400m-met-release/tmp",
+            "provide_safety_model": true,
+            "enable_faiss_memory_mapping": true,
+            "enable_hdf5": true,
+            "use_arrow": false,
+            "reorder_metadata_by_ivf_index": true,
+            "enable_mclip_option": false,
+            "clip_model": "ViT-B/32",
+            "columns_to_return": ["url", "caption"]
+    }
+}
