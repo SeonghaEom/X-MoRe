@@ -91,7 +91,12 @@ def build_dataset(set_id, transform, data_root, mode='test', n_shot=None, split=
         testdir = os.path.join(data_root, ID_to_DIRNAME[set_id], 'imagenet-r')
         # testset = datasets.ImageFolder(testdir, transform=transform)  
         testset = customImageFolder(testdir, transform=transform)
-    elif set_id in ['K', 'V']:
+    elif set_id =='V':
+        print("here")
+        testdir = os.path.join(data_root, ID_to_DIRNAME[set_id], 'imagenetv2-matched-frequency-format-val')
+        # testset = datasets.ImageFolder(testdir, transform=transform)
+        testset = customImageFolder(testdir, transform=transform)
+    elif set_id in ['K']:
         testdir = os.path.join(data_root, ID_to_DIRNAME[set_id], 'images')
         # testset = datasets.ImageFolder(testdir, transform=transform)
         testset = customImageFolder(testdir, transform=transform)
