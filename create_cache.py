@@ -117,14 +117,7 @@ def create_cache(path=None):
 
 normalize = transforms.Normalize(mean=[0.48145466, 0.4578275, 0.40821073],
                                         std=[0.26862954, 0.26130258, 0.27577711])
-fs_test_sets = 'DTD/Flower102/Food101/Cars/SUN397/Aircraft/Pets/Caltech101/UCF101/eurosat'.split('/')
-ood_test_Sets = 'V/A/K/R'.split('/')
-gpu=3
-if gpu==2:
-    datasets= fs_test_sets
-else:
-    datasets = ood_test_Sets
-data_path = '/data/seongha'
+datasets = test_sets.split('/')
 
 model = get_coop('ViT-L/14', datasets, gpu, 4, "a_photo_of_a")
 model.eval()
