@@ -75,7 +75,7 @@ fewshot_datasets = ['DTD', 'Flower102', 'Food101', 'Cars', 'SUN397',
                     'Aircraft', 'Pets', 'Caltech101', 'UCF101', 'eurosat']
 test_sets = 'DTD/Flower102/Food101/Cars/SUN397/Aircraft/Pets/Caltech101/UCF101/eurosat'
 
-################################################################################################################
+###############################################################################################################
 class CaptionCache(Dataset):
     def __init__(self, shared_dict, length):
         self.shared_dict = shared_dict
@@ -114,80 +114,6 @@ def create_cache(path=None):
     cap_cache = CaptionCache(shared_dict, length=128)
     return cap_cache, len(shared_dict.keys())
 ################################################################################################################
-
-
-# In[2]:
-
-
-# normalize = transforms.Normalize(mean=[0.48145466, 0.4578275, 0.40821073],
-#                                         std=[0.26862954, 0.26130258, 0.27577711])
-# datasets = ['K', 'V']
-# data_path = '/data/seongha'
-# for set_id in datasets:
-#     print("evaluating: {}".format(set_id))
-#     cap_cache_path = './cap_cache'
-#     path = os.path.join(cap_cache_path, '{}.pkl'.format(set_id))
-#     cap_cache, cur_i = create_cache(path)
-#     for retrieve_K in [64]:
-#         print("retrieve K: {}".format(retrieve_K))
-#         Dict = defaultdict(list)
-#         data_transform = transforms.Compose([
-#             transforms.Resize(224, interpolation=BICUBIC),
-#             transforms.CenterCrop(224),
-#             transforms.ToTensor(),
-#             normalize,
-#         ])
-#         batchsize = 1
-#         if test_sets in fewshot_datasets:
-#             classnames = eval("{}_classes".format(test_sets.lower()))
-#         else:
-#             classnames = imagenet_classes
-#         # Reset classnames of custom CLIP model
-#         if len(set_id) > 1: 
-#             # fine-grained classification datasets
-#             classnames = eval("{}_classes".format(set_id.lower()))
-#         else:
-#             assert set_id in ['A', 'R', 'K', 'V', 'I']
-#             classnames_all = imagenet_classes
-#             classnames = []
-#             if set_id in ['A', 'R', 'V']:
-#                 label_mask = eval("imagenet_{}_mask".format(set_id.lower()))
-#                 if set_id == 'R':
-#                     for i, m in enumerate(label_mask):
-#                         if m:
-#                             classnames.append(classnames_all[i])
-#                 else:
-#                     classnames = [classnames_all[i] for i in label_mask]
-#             else:
-#                 classnames = classnames_all
-
-#         val_dataset = build_dataset(set_id, data_transform, data_path, mode='test')
-#         total_length = len(val_dataset)
-#         print("number of test samples: {}".format(len(val_dataset)))
-#         val_loader = torch.utils.data.DataLoader(
-#                     val_dataset,
-#                     batch_size=batchsize, shuffle=False,
-#                     num_workers=4, pin_memory=True)
-#         for i, (images, target, imagepath) in tqdm(enumerate(val_loader)): 
-#             if i < cur_i: continue
-#             retrieved_Caption = cap_cache.__getitem__(i, imagepath[0], retrieve_K)
-
-#             if i % 200 == 0:
-                
-#                 shared_dict = dict(OrderedDict(sorted(cap_cache.shared_dict.items()))) # sort from key
-#                 with open(os.path.join(cap_cache_path, '{}.pkl'.format(set_id)), "wb") as f:
-#                     pickle.dump(shared_dict, f)
-
-#         shared_dict = dict(OrderedDict(sorted(cap_cache.shared_dict.items()))) # sort from key
-#         with open(os.path.join(cap_cache_path, '{}.pkl'.format(set_id)), "wb") as f:
-#             pickle.dump(shared_dict, f)
-    
-
-
-# ##Sort
-
-# In[3]:
-
 
 normalize = transforms.Normalize(mean=[0.48145466, 0.4578275, 0.40821073],
                                         std=[0.26862954, 0.26130258, 0.27577711])
@@ -256,7 +182,7 @@ for set_id in datasets:
                 image_feature = model.image_encoder(images.cuda(gpu))
                 tokens = torch.cat([tokenize(txt, truncate=True) for txt in retrieved_Caption]).cuda(gpu)
                 text_feature= model.text_encoder.encode_text(tokens)
-
+                
             score = torch.matmul(image_feature, text_feature.t()) # 512, 512-
             _, indices = torch.sort(score, descending=True)
             indices = indices.squeeze().tolist()
